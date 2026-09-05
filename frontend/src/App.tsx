@@ -17,7 +17,7 @@ type Email = {
   status: string;
 };
 
-const API = "http://localhost:5000";
+const API = "https://reachinbox-email-scheduler-erzy.onrender.com";
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
