@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string | null;
+};
 type Email = {
   id: string;
   recipient: string;
@@ -14,6 +19,7 @@ const API =
   "https://reachinbox-email-scheduler-erzy.onrender.com";
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -130,6 +136,30 @@ function App() {
       );
     }
   }, []);
+  useEffect(() => {
+  async function loadUser() {
+    try {
+      const response = await fetch(`${API}/api/auth/me`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        setUser(null);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUser(data.user);
+      }
+    } catch (error) {
+      console.error("Failed to load user:", error);
+    }
+  }
+
+  loadUser();
+}, []);
 
   // --------------------------------------------------
   // Utility
@@ -783,17 +813,63 @@ function App() {
               </a>
             )}
 
-            {/* Google */}
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href =
-                  `${API}/api/auth/google`;
-              }}
-              className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              Login with Google
-            </button>
+            {/* Google User */}
+{user ? (
+  <div className="flex items-center gap-3">
+    {user.avatar ? (
+      <img
+        src={user.avatar}
+        alt={user.name}
+        className="h-9 w-9 rounded-full border object-cover"
+      />
+    ) : (
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 font-semibold text-purple-700">
+        {user.name?.charAt(0).toUpperCase()}
+      </div>
+    )}
+
+    <div className="hidden text-right sm:block">
+      <p className="text-sm font-medium">
+        {user.name}
+      </p>
+
+      <p className="text-xs text-gray-500">
+        {user.email}
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await fetch(`${API}/api/auth/logout`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          setUser(null);
+          showMessage("Logged out successfully.");
+        } catch (error) {
+          console.error("Logout error:", error);
+          showMessage("Unable to logout.");
+        }
+      }}
+      className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+    >
+      Logout
+    </button>
+  </div>
+) : (
+  <button
+    type="button"
+    onClick={() => {
+      window.location.href = `${API}/api/auth/google`;
+    }}
+    className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+  >
+    Login with Google
+  </button>
+)}
 
           </div>
         </div>

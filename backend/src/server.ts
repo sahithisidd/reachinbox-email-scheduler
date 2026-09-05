@@ -4,32 +4,66 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+
 import "./config/redis";
 import "./queues/email.queue";
+
 import emailRoutes from "./routes/email.routes";
 import uploadRoutes from "./routes/upload.routes";
 import slackRoutes from "./routes/slack.routes";
+import authRoutes from "./routes/auth.routes";
+
 import { serverAdapter } from "./config/bull-board";
 import passport from "./config/passport";
-import authRoutes from "./routes/auth.routes";
-import "./workers/email.worker";
 
 const app = express();
 
+const PORT = Number(process.env.PORT) || 5000;
+
+// --------------------------------------------------
+// CORS
+// --------------------------------------------------
+
 app.use(
   cors({
-    origin: true,
+    origin: [
+      "http://localhost:5173",
+      "https://reachinbox-scheduler-frontend-8lmi.onrender.com",
+    ],
     credentials: true,
   })
 );
-app.use(express.json());
-app.use(passport.initialize());
-app.use("/api/auth", authRoutes);
-app.use("/admin/queues", serverAdapter.getRouter());
 
+// --------------------------------------------------
+// Middleware
+// --------------------------------------------------
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(passport.initialize());
+
+// --------------------------------------------------
+// BullMQ Dashboard
+// --------------------------------------------------
+
+app.use(
+  "/admin/queues",
+  serverAdapter.getRouter()
+);
+
+// --------------------------------------------------
+// Routes
+// --------------------------------------------------
+
+app.use("/api/auth", authRoutes);
 app.use("/api/emails", emailRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/slack", slackRoutes);
+
+// --------------------------------------------------
+// Backend Landing Page
+// --------------------------------------------------
 
 app.get("/", (_req, res) => {
   res.json({
@@ -41,17 +75,21 @@ app.get("/", (_req, res) => {
   });
 });
 
+// --------------------------------------------------
+// Health Check
+// --------------------------------------------------
+
 app.get("/api/health", (_req, res) => {
   res.json({
     success: true,
-    message: "ReachInbox Email Scheduler API is running",
+    message: "Backend is healthy",
   });
 });
 
-const PORT = Number(process.env.PORT) || 5000;
+// --------------------------------------------------
+// Start Server
+// --------------------------------------------------
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `Server running on http://localhost:${PORT}`
-  );
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

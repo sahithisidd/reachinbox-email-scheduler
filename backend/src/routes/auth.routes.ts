@@ -1,15 +1,16 @@
 import { Router } from "express";
 import passport from "../config/passport";
 import jwt from "jsonwebtoken";
-import cookieParser from "cookie-parser";
+import { prisma } from "../config/prisma";
 
 const router = Router();
 
 const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  "reachinbox-development-secret";
+  process.env.JWT_SECRET || "reachinbox-local-secret-2026";
 
-router.use(cookieParser());
+// --------------------------------------------------
+// Google Login
+// --------------------------------------------------
 
 router.get(
   "/google",
@@ -19,42 +20,65 @@ router.get(
   })
 );
 
+// --------------------------------------------------
+// Google Callback
+// --------------------------------------------------
+
 router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: "http://localhost:5173/login?error=google",
+    failureRedirect: "/",
   }),
   (req, res) => {
-    const user = req.user as {
-      id: string;
-      email: string;
-      name: string;
-      avatar: string | null;
-    };
+    try {
+      const user = req.user as {
+        id: string;
+        name: string;
+        email: string;
+        avatar?: string | null;
+      };
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-      },
-      JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
-    );
+      const token = jwt.sign(
+        {
+          userId: user.id,
+        },
+        JWT_SECRET,
+        {
+          expiresIn: "7d",
+        }
+      );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+      // Store JWT in HTTP-only cookie
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite:
+          process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
 
-    res.redirect(
-      `${process.env.FRONTEND_URL || "http://localhost:5173"}/?login=success`
-    );
+      // IMPORTANT:
+      // After Google login, go to the deployed frontend,
+      // not localhost.
+      const frontendUrl =
+        process.env.FRONTEND_URL || "http://localhost:5173";
+
+      return res.redirect(`${frontendUrl}/?login=success`);
+    } catch (error) {
+      console.error("Google callback error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Google login failed",
+      });
+    }
   }
 );
+
+// --------------------------------------------------
+// Get logged-in user
+// --------------------------------------------------
 
 router.get("/me", async (req, res) => {
   try {
@@ -67,16 +91,9 @@ router.get("/me", async (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(
-      token,
-      JWT_SECRET
-    ) as {
+    const decoded = jwt.verify(token, JWT_SECRET) as {
       userId: string;
     };
-
-    const { prisma } = await import(
-      "../config/prisma"
-    );
 
     const user = await prisma.user.findUnique({
       where: {
@@ -101,16 +118,27 @@ router.get("/me", async (req, res) => {
       success: true,
       user,
     });
-  } catch {
+  } catch (error) {
+    console.error("Get user error:", error);
+
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired session",
+      message: "Invalid or expired token",
     });
   }
 });
 
-router.post("/logout", (_req, res) => {
-  res.clearCookie("token");
+// --------------------------------------------------
+// Logout
+// --------------------------------------------------
+
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite:
+      process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
 
   return res.json({
     success: true,

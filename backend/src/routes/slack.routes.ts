@@ -172,8 +172,8 @@ const tokenResponse =
     );
 
     return res.redirect(
-      `${FRONTEND_URL}?slack=connected`
-    );
+  `${process.env.FRONTEND_URL || "http://localhost:5173"}/?slack=connected`
+);
   } catch (error) {
     console.error(
       "Slack OAuth callback error:",
