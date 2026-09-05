@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Email = {
   id: string;
@@ -17,39 +17,63 @@ function App() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Individual email
   const [recipient, setRecipient] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
 
+  // Bulk email
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [leadCount, setLeadCount] = useState(0);
+  const [parsingFile, setParsingFile] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Scheduler settings
   const [delayMs, setDelayMs] = useState(2000);
   const [hourlyLimit, setHourlyLimit] = useState(200);
 
+  // Slack
   const [slackConnected, setSlackConnected] = useState(false);
   const [slackChannel, setSlackChannel] = useState("");
 
+  // UI
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
+
+  // --------------------------------------------------
+  // Load emails
+  // --------------------------------------------------
 
   async function loadEmails() {
     try {
       setLoading(true);
 
       const response = await fetch(`${API}/api/emails`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load emails");
+      }
+
       const data = await response.json();
 
-      if (data.success) {
+      if (data.success && Array.isArray(data.emails)) {
         setEmails(data.emails);
+      } else {
+        setEmails([]);
       }
     } catch (error) {
       console.error("Load emails error:", error);
+      setMessage("Unable to load emails from backend.");
     } finally {
       setLoading(false);
     }
   }
+
+  // --------------------------------------------------
+  // Load Slack status
+  // --------------------------------------------------
 
   async function loadSlackStatus() {
     try {
@@ -57,16 +81,24 @@ function App() {
         `${API}/api/slack/status`
       );
 
+      if (!response.ok) {
+        return;
+      }
+
       const data = await response.json();
 
       if (data.success) {
-        setSlackConnected(data.connected);
+        setSlackConnected(Boolean(data.connected));
         setSlackChannel(data.channelName || "");
       }
     } catch (error) {
       console.error("Slack status error:", error);
     }
   }
+
+  // --------------------------------------------------
+  // Initial load
+  // --------------------------------------------------
 
   useEffect(() => {
     loadEmails();
@@ -82,8 +114,10 @@ function App() {
       window.history.replaceState(
         {},
         "",
-        "/"
+        window.location.pathname
       );
+
+      loadSlackStatus();
     }
 
     if (params.get("login") === "success") {
@@ -92,20 +126,231 @@ function App() {
       window.history.replaceState(
         {},
         "",
-        "/"
+        window.location.pathname
       );
     }
   }, []);
 
-  async function scheduleEmail() {
+  // --------------------------------------------------
+  // Utility
+  // --------------------------------------------------
+
+  function isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email.trim()
+    );
+  }
+
+  function showMessage(text: string) {
+    setMessage(text);
+
+    window.setTimeout(() => {
+      setMessage("");
+    }, 5000);
+  }
+
+  // --------------------------------------------------
+  // Parse leads file
+  // --------------------------------------------------
+
+  async function parseLeadsFile(file: File) {
+    setParsingFile(true);
+    setLeadCount(0);
+
+    try {
+      const text = await file.text();
+
+      const cleanedText = text.trim();
+
+      if (!cleanedText) {
+        setCsvFile(null);
+        showMessage("The selected file is empty.");
+        return;
+      }
+
+      let count = 0;
+
+      if (
+        file.name.toLowerCase().endsWith(".txt")
+      ) {
+        // TXT:
+        // one email per line
+        const emailsFromText = cleanedText
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(
+            (line) =>
+              line.length > 0 &&
+              isValidEmail(line)
+          );
+
+        count = emailsFromText.length;
+      } else {
+        // CSV
+        const lines = cleanedText
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        if (lines.length === 0) {
+          showMessage("No leads found in CSV.");
+          return;
+        }
+
+        const header = lines[0]
+          .split(",")
+          .map((value) =>
+            value
+              .trim()
+              .replace(/^["']|["']$/g, "")
+              .toLowerCase()
+          );
+
+        const emailColumn = header.findIndex(
+          (column) => column === "email"
+        );
+
+        if (emailColumn === -1) {
+          showMessage(
+            "CSV must contain an 'email' column."
+          );
+          setCsvFile(null);
+          return;
+        }
+
+        for (let i = 1; i < lines.length; i++) {
+          const columns = lines[i]
+            .split(",")
+            .map((value) =>
+              value
+                .trim()
+                .replace(/^["']|["']$/g, "")
+            );
+
+          const email =
+            columns[emailColumn] || "";
+
+          if (isValidEmail(email)) {
+            count++;
+          }
+        }
+      }
+
+      if (count === 0) {
+        setCsvFile(null);
+        setLeadCount(0);
+
+        showMessage(
+          "No valid email addresses were found in the file."
+        );
+
+        return;
+      }
+
+      setCsvFile(file);
+      setLeadCount(count);
+
+      showMessage(
+        `${count} lead${count === 1 ? "" : "s"} found.`
+      );
+    } catch (error) {
+      console.error("File parsing error:", error);
+
+      setCsvFile(null);
+      setLeadCount(0);
+
+      showMessage(
+        "Unable to read the selected file."
+      );
+    } finally {
+      setParsingFile(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // File selected
+  // --------------------------------------------------
+
+  function handleFileChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file =
+      event.target.files?.[0] || null;
+
+    if (!file) {
+      setCsvFile(null);
+      setLeadCount(0);
+      return;
+    }
+
+    const fileName =
+      file.name.toLowerCase();
+
     if (
-      !recipient ||
-      !subject ||
-      !body ||
-      !scheduledAt
+      !fileName.endsWith(".csv") &&
+      !fileName.endsWith(".txt")
     ) {
-      setMessage(
-        "Please fill all email fields."
+      setCsvFile(null);
+      setLeadCount(0);
+
+      showMessage(
+        "Please select a CSV or TXT file."
+      );
+
+      event.target.value = "";
+      return;
+    }
+
+    parseLeadsFile(file);
+  }
+
+  // --------------------------------------------------
+  // Schedule individual email
+  // --------------------------------------------------
+
+  async function scheduleEmail() {
+    if (!recipient.trim()) {
+      showMessage("Please enter a recipient email.");
+      return;
+    }
+
+    if (!isValidEmail(recipient)) {
+      showMessage(
+        "Please enter a valid recipient email."
+      );
+      return;
+    }
+
+    if (!subject.trim()) {
+      showMessage("Please enter a subject.");
+      return;
+    }
+
+    if (!body.trim()) {
+      showMessage("Please enter the email body.");
+      return;
+    }
+
+    if (!scheduledAt) {
+      showMessage("Please select a start time.");
+      return;
+    }
+
+    const scheduleDate =
+      new Date(scheduledAt);
+
+    if (
+      Number.isNaN(scheduleDate.getTime())
+    ) {
+      showMessage("Invalid start time.");
+      return;
+    }
+
+    if (
+      scheduleDate.getTime() <= Date.now()
+    ) {
+      showMessage(
+        "Start time must be in the future."
       );
       return;
     }
@@ -122,13 +367,11 @@ function App() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            recipient,
-            subject,
-            body,
+            recipient: recipient.trim(),
+            subject: subject.trim(),
+            body: body.trim(),
             scheduledAt:
-              new Date(
-                scheduledAt
-              ).toISOString(),
+              scheduleDate.toISOString(),
           }),
         }
       );
@@ -136,14 +379,15 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        setMessage(
+        showMessage(
           data.message ||
             "Failed to schedule email."
         );
+
         return;
       }
 
-      setMessage(
+      showMessage(
         "Email scheduled successfully."
       );
 
@@ -154,9 +398,12 @@ function App() {
 
       await loadEmails();
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Schedule email error:",
+        error
+      );
 
-      setMessage(
+      showMessage(
         "Unable to connect to backend."
       );
     } finally {
@@ -164,18 +411,139 @@ function App() {
     }
   }
 
-  async function uploadCSV() {
-    if (!csvFile) {
-      setMessage(
-        "Please select a CSV file."
+  // --------------------------------------------------
+  // Create backend-compatible CSV
+  // --------------------------------------------------
+
+  async function createBackendFile(
+    file: File
+  ): Promise<File> {
+    const text = await file.text();
+
+    if (
+      file.name
+        .toLowerCase()
+        .endsWith(".csv")
+    ) {
+      return file;
+    }
+
+    // TXT format:
+    // email1@example.com
+    // email2@example.com
+    //
+    // Backend expects CSV with an email column.
+
+    const emailsFromText = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          line.length > 0 &&
+          isValidEmail(line)
       );
+
+    const csvContent =
+      "email\n" +
+      emailsFromText.join("\n");
+
+    return new File(
+      [csvContent],
+      "leads.csv",
+      {
+        type: "text/csv",
+      }
+    );
+  }
+
+  // --------------------------------------------------
+  // Upload and schedule bulk leads
+  // --------------------------------------------------
+
+  async function uploadCSV() {
+    // IMPORTANT:
+    // This checks the same state that the file input sets.
+    if (!csvFile) {
+      showMessage(
+        "Upload a CSV/text file of leads first."
+      );
+
       return;
     }
 
-    if (!subject || !body || !scheduledAt) {
-      setMessage(
-        "Enter subject, body and start time first."
+    if (parsingFile) {
+      showMessage(
+        "Please wait until the file finishes parsing."
       );
+
+      return;
+    }
+
+    if (leadCount <= 0) {
+      showMessage(
+        "No valid leads were found in the selected file."
+      );
+
+      return;
+    }
+
+    if (!subject.trim()) {
+      showMessage("Please enter a subject.");
+      return;
+    }
+
+    if (!body.trim()) {
+      showMessage("Please enter the email body.");
+      return;
+    }
+
+    if (!scheduledAt) {
+      showMessage(
+        "Please select a start time."
+      );
+
+      return;
+    }
+
+    const startDate =
+      new Date(scheduledAt);
+
+    if (
+      Number.isNaN(startDate.getTime())
+    ) {
+      showMessage("Invalid start time.");
+      return;
+    }
+
+    if (
+      startDate.getTime() <= Date.now()
+    ) {
+      showMessage(
+        "Start time must be in the future."
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(delayMs) ||
+      delayMs < 0
+    ) {
+      showMessage(
+        "Delay must be 0 or greater."
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(hourlyLimit) ||
+      hourlyLimit < 1
+    ) {
+      showMessage(
+        "Hourly limit must be at least 1."
+      );
+
       return;
     }
 
@@ -183,28 +551,29 @@ function App() {
       setSending(true);
       setMessage("");
 
+      const backendFile =
+        await createBackendFile(csvFile);
+
       const formData = new FormData();
 
       formData.append(
         "file",
-        csvFile
+        backendFile
       );
 
       formData.append(
         "subject",
-        subject
+        subject.trim()
       );
 
       formData.append(
         "body",
-        body
+        body.trim()
       );
 
       formData.append(
         "startTime",
-        new Date(
-          scheduledAt
-        ).toISOString()
+        startDate.toISOString()
       );
 
       formData.append(
@@ -225,34 +594,51 @@ function App() {
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
-        setMessage(
+        showMessage(
           data.message ||
             "CSV upload failed."
         );
+
         return;
       }
 
-      setMessage(
-        `${data.count} emails scheduled successfully.`
+      showMessage(
+        `${data.count || leadCount} emails scheduled successfully.`
       );
 
       setCsvFile(null);
       setLeadCount(0);
 
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      setSubject("");
+      setBody("");
+      setScheduledAt("");
+
       await loadEmails();
     } catch (error) {
-      console.error(error);
+      console.error(
+        "CSV upload error:",
+        error
+      );
 
-      setMessage(
-        "Unable to upload CSV."
+      showMessage(
+        "Unable to upload leads to backend."
       );
     } finally {
       setSending(false);
     }
   }
+
+  // --------------------------------------------------
+  // Disconnect Slack
+  // --------------------------------------------------
 
   async function disconnectSlack() {
     try {
@@ -263,26 +649,37 @@ function App() {
         }
       );
 
+      const data =
+        await response.json();
+
       if (!response.ok) {
         throw new Error(
-          "Disconnect failed"
+          data.message ||
+            "Disconnect failed"
         );
       }
 
       setSlackConnected(false);
       setSlackChannel("");
 
-      setMessage(
+      showMessage(
         "Slack disconnected."
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Disconnect Slack error:",
+        error
+      );
 
-      setMessage(
+      showMessage(
         "Unable to disconnect Slack."
       );
     }
   }
+
+  // --------------------------------------------------
+  // Lists
+  // --------------------------------------------------
 
   const scheduled = emails.filter(
     (email) =>
@@ -294,6 +691,10 @@ function App() {
     (email) =>
       email.status === "SENT"
   );
+
+  // --------------------------------------------------
+  // Render
+  // --------------------------------------------------
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-gray-900">
@@ -314,6 +715,7 @@ function App() {
 
           <div className="flex items-center gap-3">
 
+            {/* Slack */}
             {slackConnected ? (
               <>
                 <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700">
@@ -323,6 +725,7 @@ function App() {
                 </span>
 
                 <button
+                  type="button"
                   onClick={
                     disconnectSlack
                   }
@@ -340,7 +743,9 @@ function App() {
               </a>
             )}
 
+            {/* Google */}
             <button
+              type="button"
               onClick={() => {
                 window.location.href =
                   `${API}/api/auth/google`;
@@ -358,7 +763,7 @@ function App() {
 
         {/* Message */}
         {message && (
-          <div className="mb-6 rounded-lg border bg-white px-4 py-3 text-sm">
+          <div className="mb-6 rounded-lg border bg-white px-4 py-3 text-sm shadow-sm">
             {message}
           </div>
         )}
@@ -401,7 +806,7 @@ function App() {
         {/* Compose + Bulk */}
         <div className="grid gap-8 lg:grid-cols-2">
 
-          {/* Compose */}
+          {/* Individual Email */}
           <section className="rounded-xl border bg-white p-6">
 
             <h2 className="mb-1 text-xl font-semibold">
@@ -414,12 +819,14 @@ function App() {
 
             <div className="space-y-4">
 
+              {/* Recipient */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Recipient
                 </label>
 
                 <input
+                  type="email"
                   value={recipient}
                   onChange={(e) =>
                     setRecipient(
@@ -431,12 +838,14 @@ function App() {
                 />
               </div>
 
+              {/* Subject */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Subject
                 </label>
 
                 <input
+                  type="text"
                   value={subject}
                   onChange={(e) =>
                     setSubject(
@@ -448,6 +857,7 @@ function App() {
                 />
               </div>
 
+              {/* Body */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Body
@@ -466,6 +876,7 @@ function App() {
                 />
               </div>
 
+              {/* Start Time */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Start Time
@@ -484,11 +895,10 @@ function App() {
               </div>
 
               <button
+                type="button"
                 disabled={sending}
-                onClick={
-                  scheduleEmail
-                }
-                className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white hover:opacity-90 disabled:opacity-50"
+                onClick={scheduleEmail}
+                className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {sending
                   ? "Scheduling..."
@@ -498,7 +908,7 @@ function App() {
             </div>
           </section>
 
-          {/* Bulk */}
+          {/* Bulk Leads */}
           <section className="rounded-xl border bg-white p-6">
 
             <h2 className="mb-1 text-xl font-semibold">
@@ -506,68 +916,51 @@ function App() {
             </h2>
 
             <p className="mb-6 text-sm text-gray-500">
-              Upload a CSV containing an email column.
+              Upload a CSV with an email column or a TXT file with one email per line.
             </p>
 
             <div className="space-y-5">
 
+              {/* File */}
               <div className="rounded-lg border-2 border-dashed p-8 text-center">
 
                 <input
+                  ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt"
-                  onChange={(e) => {
-                    const file =
-                      e.target.files?.[0] ||
-                      null;
-
-                    setCsvFile(file);
-
-                    if (file) {
-                      const reader =
-                        new FileReader();
-
-                      reader.onload = () => {
-                        const text =
-                          String(
-                            reader.result ||
-                              ""
-                          );
-
-                        const lines =
-                          text
-                            .split(
-                              /\r?\n/
-                            )
-                            .filter(
-                              Boolean
-                            );
-
-                        setLeadCount(
-                          Math.max(
-                            lines.length -
-                              1,
-                            0
-                          )
-                        );
-                      };
-
-                      reader.readAsText(
-                        file
-                      );
-                    }
-                  }}
+                  accept=".csv,.txt,text/csv,text/plain"
+                  onChange={
+                    handleFileChange
+                  }
+                  className="block w-full cursor-pointer text-sm"
                 />
 
-                {csvFile && (
-                  <p className="mt-3 text-sm">
-                    {csvFile.name} •{" "}
-                    {leadCount} leads
+                {parsingFile && (
+                  <p className="mt-3 text-sm text-purple-600">
+                    Parsing file...
                   </p>
                 )}
 
+                {!parsingFile &&
+                  csvFile && (
+                    <p className="mt-3 text-sm font-medium text-gray-700">
+                      {csvFile.name} •{" "}
+                      {leadCount}{" "}
+                      {leadCount === 1
+                        ? "lead"
+                        : "leads"}
+                    </p>
+                  )}
+
+                {!csvFile &&
+                  !parsingFile && (
+                    <p className="mt-3 text-sm text-gray-400">
+                      No leads file selected.
+                    </p>
+                  )}
+
               </div>
 
+              {/* Delay */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Delay between emails (ms)
@@ -586,8 +979,13 @@ function App() {
                   }
                   className="w-full rounded-lg border px-3 py-2"
                 />
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Minimum spacing between sends.
+                </p>
               </div>
 
+              {/* Hourly limit */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Hourly limit
@@ -606,16 +1004,27 @@ function App() {
                   }
                   className="w-full rounded-lg border px-3 py-2"
                 />
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Maximum emails per sender per hour.
+                </p>
               </div>
 
+              {/* Upload */}
               <button
-                disabled={sending}
-                onClick={
-                  uploadCSV
+                type="button"
+                disabled={
+                  sending ||
+                  parsingFile ||
+                  !csvFile ||
+                  leadCount <= 0
                 }
-                className="w-full rounded-lg bg-purple-600 px-4 py-3 font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                onClick={uploadCSV}
+                className="w-full rounded-lg bg-purple-600 px-4 py-3 font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {sending
+                {parsingFile
+                  ? "Parsing..."
+                  : sending
                   ? "Uploading..."
                   : "Upload & Schedule Leads"}
               </button>
