@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
 
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  avatar: string | null;
-};
-
 type Email = {
   id: string;
   recipient: string;
@@ -17,12 +10,10 @@ type Email = {
   status: string;
 };
 
-const API = "https://reachinbox-email-scheduler-erzy.onrender.com";
+const API =
+  "https://reachinbox-email-scheduler-erzy.onrender.com";
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,60 +34,28 @@ function App() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
 
-  // -----------------------------
-  // Load logged-in Google user
-  // -----------------------------
-  async function loadUser() {
-    try {
-      const response = await fetch(`${API}/api/auth/me`, {
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (data.success) {
-          setUser(data.user);
-        }
-      }
-    } catch (error) {
-      console.error("Auth error:", error);
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
-  // -----------------------------
-  // Load emails
-  // -----------------------------
   async function loadEmails() {
     try {
       setLoading(true);
 
-      const response = await fetch(`${API}/api/emails`, {
-        credentials: "include",
-      });
-
+      const response = await fetch(`${API}/api/emails`);
       const data = await response.json();
 
       if (data.success) {
         setEmails(data.emails);
       }
     } catch (error) {
-      console.error("Email loading error:", error);
+      console.error("Load emails error:", error);
     } finally {
       setLoading(false);
     }
   }
 
-  // -----------------------------
-  // Load Slack status
-  // -----------------------------
   async function loadSlackStatus() {
     try {
-      const response = await fetch(`${API}/api/slack/status`, {
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API}/api/slack/status`
+      );
 
       const data = await response.json();
 
@@ -109,33 +68,45 @@ function App() {
     }
   }
 
-  // -----------------------------
-  // Initial loading
-  // -----------------------------
   useEffect(() => {
-    loadUser();
     loadEmails();
     loadSlackStatus();
 
-    const params = new URLSearchParams(window.location.search);
-
-    if (params.get("login") === "success") {
-      setMessage("Logged in successfully!");
-      window.history.replaceState({}, "", "/");
-    }
+    const params = new URLSearchParams(
+      window.location.search
+    );
 
     if (params.get("slack") === "connected") {
       setMessage("Slack connected successfully!");
-      window.history.replaceState({}, "", "/");
+
+      window.history.replaceState(
+        {},
+        "",
+        "/"
+      );
+    }
+
+    if (params.get("login") === "success") {
+      setMessage("Google login successful!");
+
+      window.history.replaceState(
+        {},
+        "",
+        "/"
+      );
     }
   }, []);
 
-  // -----------------------------
-  // Schedule single email
-  // -----------------------------
   async function scheduleEmail() {
-    if (!recipient || !subject || !body || !scheduledAt) {
-      setMessage("Please fill all email fields.");
+    if (
+      !recipient ||
+      !subject ||
+      !body ||
+      !scheduledAt
+    ) {
+      setMessage(
+        "Please fill all email fields."
+      );
       return;
     }
 
@@ -143,30 +114,38 @@ function App() {
       setSending(true);
       setMessage("");
 
-      const response = await fetch(`${API}/api/emails/schedule`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          recipient,
-          subject,
-          body,
-          scheduledAt: new Date(scheduledAt).toISOString(),
-        }),
-      });
+      const response = await fetch(
+        `${API}/api/emails/schedule`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            recipient,
+            subject,
+            body,
+            scheduledAt:
+              new Date(
+                scheduledAt
+              ).toISOString(),
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         setMessage(
-          data.message || "Failed to schedule email."
+          data.message ||
+            "Failed to schedule email."
         );
         return;
       }
 
-      setMessage("Email scheduled successfully.");
+      setMessage(
+        "Email scheduled successfully."
+      );
 
       setRecipient("");
       setSubject("");
@@ -176,18 +155,20 @@ function App() {
       await loadEmails();
     } catch (error) {
       console.error(error);
-      setMessage("Unable to connect to backend.");
+
+      setMessage(
+        "Unable to connect to backend."
+      );
     } finally {
       setSending(false);
     }
   }
 
-  // -----------------------------
-  // Upload CSV
-  // -----------------------------
   async function uploadCSV() {
     if (!csvFile) {
-      setMessage("Please select a CSV file.");
+      setMessage(
+        "Please select a CSV file."
+      );
       return;
     }
 
@@ -204,13 +185,26 @@ function App() {
 
       const formData = new FormData();
 
-      formData.append("file", csvFile);
-      formData.append("subject", subject);
-      formData.append("body", body);
+      formData.append(
+        "file",
+        csvFile
+      );
+
+      formData.append(
+        "subject",
+        subject
+      );
+
+      formData.append(
+        "body",
+        body
+      );
 
       formData.append(
         "startTime",
-        new Date(scheduledAt).toISOString()
+        new Date(
+          scheduledAt
+        ).toISOString()
       );
 
       formData.append(
@@ -227,7 +221,6 @@ function App() {
         `${API}/api/upload/csv`,
         {
           method: "POST",
-          credentials: "include",
           body: formData,
         }
       );
@@ -236,7 +229,8 @@ function App() {
 
       if (!response.ok) {
         setMessage(
-          data.message || "CSV upload failed."
+          data.message ||
+            "CSV upload failed."
         );
         return;
       }
@@ -251,58 +245,45 @@ function App() {
       await loadEmails();
     } catch (error) {
       console.error(error);
-      setMessage("Unable to upload CSV.");
+
+      setMessage(
+        "Unable to upload CSV."
+      );
     } finally {
       setSending(false);
     }
   }
 
-  // -----------------------------
-  // Disconnect Slack
-  // -----------------------------
   async function disconnectSlack() {
     try {
-      await fetch(
+      const response = await fetch(
         `${API}/api/slack/disconnect`,
         {
           method: "DELETE",
-          credentials: "include",
         }
       );
+
+      if (!response.ok) {
+        throw new Error(
+          "Disconnect failed"
+        );
+      }
 
       setSlackConnected(false);
       setSlackChannel("");
-      setMessage("Slack disconnected.");
-    } catch (error) {
-      console.error("Slack disconnect error:", error);
-      setMessage("Failed to disconnect Slack.");
-    }
-  }
 
-  // -----------------------------
-  // Logout
-  // -----------------------------
-  async function logout() {
-    try {
-      await fetch(
-        `${API}/api/auth/logout`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
+      setMessage(
+        "Slack disconnected."
       );
-
-      setUser(null);
-      setMessage("Logged out successfully.");
     } catch (error) {
-      console.error("Logout error:", error);
-      setMessage("Logout failed.");
+      console.error(error);
+
+      setMessage(
+        "Unable to disconnect Slack."
+      );
     }
   }
 
-  // -----------------------------
-  // Email groups
-  // -----------------------------
   const scheduled = emails.filter(
     (email) =>
       email.status === "SCHEDULED" ||
@@ -310,25 +291,10 @@ function App() {
   );
 
   const sent = emails.filter(
-    (email) => email.status === "SENT"
+    (email) =>
+      email.status === "SENT"
   );
 
-  // -----------------------------
-  // Loading screen
-  // -----------------------------
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f8f9fb]">
-        <div className="rounded-xl border bg-white px-8 py-6 text-gray-500 shadow-sm">
-          Loading ReachInbox...
-        </div>
-      </div>
-    );
-  }
-
-  // -----------------------------
-  // Main dashboard
-  // -----------------------------
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-gray-900">
 
@@ -348,7 +314,6 @@ function App() {
 
           <div className="flex items-center gap-3">
 
-            {/* Slack */}
             {slackConnected ? (
               <>
                 <span className="rounded-full bg-green-100 px-3 py-1 text-sm text-green-700">
@@ -358,7 +323,9 @@ function App() {
                 </span>
 
                 <button
-                  onClick={disconnectSlack}
+                  onClick={
+                    disconnectSlack
+                  }
                   className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
                 >
                   Disconnect
@@ -373,49 +340,15 @@ function App() {
               </a>
             )}
 
-            {/* Google User */}
-            {user ? (
-              <div className="flex items-center gap-3">
-
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="h-9 w-9 rounded-full"
-                  />
-                ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 font-semibold text-purple-700">
-                    {user.name
-                      .charAt(0)
-                      .toUpperCase()}
-                  </div>
-                )}
-
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-medium">
-                    {user.name}
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    {user.email}
-                  </p>
-                </div>
-
-                <button
-                  onClick={logout}
-                  className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <a
-                href={`${API}/api/auth/google`}
-                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-              >
-                Sign in with Google
-              </a>
-            )}
+            <button
+              onClick={() => {
+                window.location.href =
+                  `${API}/api/auth/google`;
+              }}
+              className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+            >
+              Login with Google
+            </button>
 
           </div>
         </div>
@@ -425,7 +358,7 @@ function App() {
 
         {/* Message */}
         {message && (
-          <div className="mb-6 rounded-lg border bg-white px-4 py-3 text-sm shadow-sm">
+          <div className="mb-6 rounded-lg border bg-white px-4 py-3 text-sm">
             {message}
           </div>
         )}
@@ -433,7 +366,7 @@ function App() {
         {/* Stats */}
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
 
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="rounded-xl border bg-white p-5">
             <p className="text-sm text-gray-500">
               Total Emails
             </p>
@@ -443,7 +376,7 @@ function App() {
             </p>
           </div>
 
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="rounded-xl border bg-white p-5">
             <p className="text-sm text-gray-500">
               Scheduled
             </p>
@@ -453,7 +386,7 @@ function App() {
             </p>
           </div>
 
-          <div className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="rounded-xl border bg-white p-5">
             <p className="text-sm text-gray-500">
               Sent
             </p>
@@ -468,8 +401,8 @@ function App() {
         {/* Compose + Bulk */}
         <div className="grid gap-8 lg:grid-cols-2">
 
-          {/* Compose Email */}
-          <section className="rounded-xl border bg-white p-6 shadow-sm">
+          {/* Compose */}
+          <section className="rounded-xl border bg-white p-6">
 
             <h2 className="mb-1 text-xl font-semibold">
               Compose Email
@@ -481,7 +414,6 @@ function App() {
 
             <div className="space-y-4">
 
-              {/* Recipient */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Recipient
@@ -490,14 +422,15 @@ function App() {
                 <input
                   value={recipient}
                   onChange={(e) =>
-                    setRecipient(e.target.value)
+                    setRecipient(
+                      e.target.value
+                    )
                   }
                   placeholder="recipient@example.com"
                   className="w-full rounded-lg border px-3 py-2 outline-none focus:border-purple-500"
                 />
               </div>
 
-              {/* Subject */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Subject
@@ -506,14 +439,15 @@ function App() {
                 <input
                   value={subject}
                   onChange={(e) =>
-                    setSubject(e.target.value)
+                    setSubject(
+                      e.target.value
+                    )
                   }
                   placeholder="Email subject"
                   className="w-full rounded-lg border px-3 py-2 outline-none focus:border-purple-500"
                 />
               </div>
 
-              {/* Body */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Body
@@ -522,7 +456,9 @@ function App() {
                 <textarea
                   value={body}
                   onChange={(e) =>
-                    setBody(e.target.value)
+                    setBody(
+                      e.target.value
+                    )
                   }
                   placeholder="Write your email..."
                   rows={7}
@@ -530,7 +466,6 @@ function App() {
                 />
               </div>
 
-              {/* Start Time */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Start Time
@@ -540,16 +475,19 @@ function App() {
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(e) =>
-                    setScheduledAt(e.target.value)
+                    setScheduledAt(
+                      e.target.value
+                    )
                   }
                   className="w-full rounded-lg border px-3 py-2"
                 />
               </div>
 
-              {/* Schedule */}
               <button
                 disabled={sending}
-                onClick={scheduleEmail}
+                onClick={
+                  scheduleEmail
+                }
                 className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
                 {sending
@@ -560,8 +498,8 @@ function App() {
             </div>
           </section>
 
-          {/* Bulk Leads */}
-          <section className="rounded-xl border bg-white p-6 shadow-sm">
+          {/* Bulk */}
+          <section className="rounded-xl border bg-white p-6">
 
             <h2 className="mb-1 text-xl font-semibold">
               Bulk Leads
@@ -573,7 +511,6 @@ function App() {
 
             <div className="space-y-5">
 
-              {/* File */}
               <div className="rounded-lg border-2 border-dashed p-8 text-center">
 
                 <input
@@ -581,7 +518,8 @@ function App() {
                   accept=".csv,.txt"
                   onChange={(e) => {
                     const file =
-                      e.target.files?.[0] || null;
+                      e.target.files?.[0] ||
+                      null;
 
                     setCsvFile(file);
 
@@ -592,23 +530,31 @@ function App() {
                       reader.onload = () => {
                         const text =
                           String(
-                            reader.result || ""
+                            reader.result ||
+                              ""
                           );
 
                         const lines =
                           text
-                            .split(/\r?\n/)
-                            .filter(Boolean);
+                            .split(
+                              /\r?\n/
+                            )
+                            .filter(
+                              Boolean
+                            );
 
                         setLeadCount(
                           Math.max(
-                            lines.length - 1,
+                            lines.length -
+                              1,
                             0
                           )
                         );
                       };
 
-                      reader.readAsText(file);
+                      reader.readAsText(
+                        file
+                      );
                     }
                   }}
                 />
@@ -622,7 +568,6 @@ function App() {
 
               </div>
 
-              {/* Delay */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Delay between emails (ms)
@@ -634,14 +579,15 @@ function App() {
                   value={delayMs}
                   onChange={(e) =>
                     setDelayMs(
-                      Number(e.target.value)
+                      Number(
+                        e.target.value
+                      )
                     )
                   }
                   className="w-full rounded-lg border px-3 py-2"
                 />
               </div>
 
-              {/* Hourly limit */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Hourly limit
@@ -653,17 +599,20 @@ function App() {
                   value={hourlyLimit}
                   onChange={(e) =>
                     setHourlyLimit(
-                      Number(e.target.value)
+                      Number(
+                        e.target.value
+                      )
                     )
                   }
                   className="w-full rounded-lg border px-3 py-2"
                 />
               </div>
 
-              {/* Upload */}
               <button
                 disabled={sending}
-                onClick={uploadCSV}
+                onClick={
+                  uploadCSV
+                }
                 className="w-full rounded-lg bg-purple-600 px-4 py-3 font-medium text-white hover:bg-purple-700 disabled:opacity-50"
               >
                 {sending
@@ -677,7 +626,7 @@ function App() {
         </div>
 
         {/* Scheduled Emails */}
-        <section className="mt-8 rounded-xl border bg-white shadow-sm">
+        <section className="mt-8 rounded-xl border bg-white">
 
           <div className="border-b px-6 py-5">
             <h2 className="text-xl font-semibold">
@@ -696,38 +645,40 @@ function App() {
           ) : (
             <div className="divide-y">
 
-              {scheduled.map((email) => (
-                <div
-                  key={email.id}
-                  className="flex items-center justify-between px-6 py-4"
-                >
+              {scheduled.map(
+                (email) => (
+                  <div
+                    key={email.id}
+                    className="flex items-center justify-between px-6 py-4"
+                  >
 
-                  <div>
-                    <p className="font-medium">
-                      {email.subject}
-                    </p>
+                    <div>
+                      <p className="font-medium">
+                        {email.subject}
+                      </p>
 
-                    <p className="text-sm text-gray-500">
-                      {email.recipient}
-                    </p>
+                      <p className="text-sm text-gray-500">
+                        {email.recipient}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+
+                      <p className="text-sm">
+                        {new Date(
+                          email.scheduledAt
+                        ).toLocaleString()}
+                      </p>
+
+                      <span className="text-xs text-orange-600">
+                        {email.status}
+                      </span>
+
+                    </div>
+
                   </div>
-
-                  <div className="text-right">
-
-                    <p className="text-sm">
-                      {new Date(
-                        email.scheduledAt
-                      ).toLocaleString()}
-                    </p>
-
-                    <span className="text-xs text-orange-600">
-                      {email.status}
-                    </span>
-
-                  </div>
-
-                </div>
-              ))}
+                )
+              )}
 
             </div>
           )}
@@ -735,7 +686,7 @@ function App() {
         </section>
 
         {/* Sent Emails */}
-        <section className="mt-8 rounded-xl border bg-white shadow-sm">
+        <section className="mt-8 rounded-xl border bg-white">
 
           <div className="border-b px-6 py-5">
             <h2 className="text-xl font-semibold">
@@ -754,40 +705,42 @@ function App() {
           ) : (
             <div className="divide-y">
 
-              {sent.map((email) => (
-                <div
-                  key={email.id}
-                  className="flex items-center justify-between px-6 py-4"
-                >
+              {sent.map(
+                (email) => (
+                  <div
+                    key={email.id}
+                    className="flex items-center justify-between px-6 py-4"
+                  >
 
-                  <div>
-                    <p className="font-medium">
-                      {email.subject}
-                    </p>
+                    <div>
+                      <p className="font-medium">
+                        {email.subject}
+                      </p>
 
-                    <p className="text-sm text-gray-500">
-                      {email.recipient}
-                    </p>
+                      <p className="text-sm text-gray-500">
+                        {email.recipient}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+
+                      <p className="text-sm">
+                        {email.sentAt
+                          ? new Date(
+                              email.sentAt
+                            ).toLocaleString()
+                          : "-"}
+                      </p>
+
+                      <span className="text-xs text-green-600">
+                        SENT
+                      </span>
+
+                    </div>
+
                   </div>
-
-                  <div className="text-right">
-
-                    <p className="text-sm">
-                      {email.sentAt
-                        ? new Date(
-                            email.sentAt
-                          ).toLocaleString()
-                        : "-"}
-                    </p>
-
-                    <span className="text-xs text-green-600">
-                      SENT
-                    </span>
-
-                  </div>
-
-                </div>
-              ))}
+                )
+              )}
 
             </div>
           )}
