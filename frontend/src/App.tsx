@@ -1025,128 +1025,157 @@ function App() {
           </section>
 
           {/* Bulk Leads */}
-          <section className="rounded-xl border bg-white p-6">
+<section className="rounded-xl border bg-white p-6">
 
-            <h2 className="mb-1 text-xl font-semibold">
-              Bulk Leads
-            </h2>
+  <h2 className="mb-1 text-xl font-semibold">
+    Bulk Leads
+  </h2>
 
-            <p className="mb-6 text-sm text-gray-500">
-              Upload a CSV with an email column or a TXT file with one email per line.
-            </p>
+  <p className="mb-6 text-sm text-gray-500">
+    Upload a CSV with an email column or a TXT file with one email per line.
+  </p>
 
-            <div className="space-y-5">
+  <div className="space-y-5">
 
-              {/* File */}
-              <div className="rounded-lg border-2 border-dashed p-8 text-center">
+    {/* File */}
+    <div className="rounded-lg border-2 border-dashed p-8 text-center">
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.txt,text/csv,text/plain"
-                  onChange={
-                    handleFileChange
-                  }
-                  className="block w-full cursor-pointer text-sm"
-                />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.txt,text/csv,text/plain"
+        onChange={handleFileChange}
+        className="block w-full cursor-pointer text-sm"
+      />
 
-                {parsingFile && (
-                  <p className="mt-3 text-sm text-purple-600">
-                    Parsing file...
-                  </p>
-                )}
+      {parsingFile && (
+        <p className="mt-3 text-sm text-purple-600">
+          Parsing file...
+        </p>
+      )}
 
-                {!parsingFile &&
-                  csvFile && (
-                    <p className="mt-3 text-sm font-medium text-gray-700">
-                      {csvFile.name} •{" "}
-                      {leadCount}{" "}
-                      {leadCount === 1
-                        ? "lead"
-                        : "leads"}
-                    </p>
-                  )}
+      {!parsingFile && csvFile && (
+        <p className="mt-3 text-sm font-medium text-gray-700">
+          {csvFile.name} • {leadCount}{" "}
+          {leadCount === 1 ? "lead" : "leads"}
+        </p>
+      )}
 
-                {!csvFile &&
-                  !parsingFile && (
-                    <p className="mt-3 text-sm text-gray-400">
-                      No leads file selected.
-                    </p>
-                  )}
+      {!csvFile && !parsingFile && (
+        <p className="mt-3 text-sm text-gray-400">
+          No leads file selected.
+        </p>
+      )}
 
-              </div>
+    </div>
 
-              {/* Delay */}
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Delay between emails (ms)
-                </label>
+    {/* Subject */}
+    <div>
+      <label className="mb-1 block text-sm font-medium">
+        Subject
+      </label>
 
-                <input
-                  type="number"
-                  min="0"
-                  value={delayMs}
-                  onChange={(e) =>
-                    setDelayMs(
-                      Number(
-                        e.target.value
-                      )
-                    )
-                  }
-                  className="w-full rounded-lg border px-3 py-2"
-                />
+      <input
+        type="text"
+        value={subject}
+        onChange={(e) => setSubject(e.target.value)}
+        placeholder="Email subject"
+        className="w-full rounded-lg border px-3 py-2 outline-none focus:border-purple-500"
+      />
+    </div>
 
-                <p className="mt-1 text-xs text-gray-400">
-                  Minimum spacing between sends.
-                </p>
-              </div>
+    {/* Body */}
+    <div>
+      <label className="mb-1 block text-sm font-medium">
+        Email Body
+      </label>
 
-              {/* Hourly limit */}
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Hourly limit
-                </label>
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Write your email..."
+        rows={5}
+        className="w-full resize-none rounded-lg border px-3 py-2 outline-none focus:border-purple-500"
+      />
+    </div>
 
-                <input
-                  type="number"
-                  min="1"
-                  value={hourlyLimit}
-                  onChange={(e) =>
-                    setHourlyLimit(
-                      Number(
-                        e.target.value
-                      )
-                    )
-                  }
-                  className="w-full rounded-lg border px-3 py-2"
-                />
+    {/* Start Time */}
+    <div>
+      <label className="mb-1 block text-sm font-medium">
+        Start Time
+      </label>
 
-                <p className="mt-1 text-xs text-gray-400">
-                  Maximum emails per sender per hour.
-                </p>
-              </div>
+      <input
+        type="datetime-local"
+        value={scheduledAt}
+        onChange={(e) => setScheduledAt(e.target.value)}
+        className="w-full rounded-lg border px-3 py-2"
+      />
+    </div>
 
-              {/* Upload */}
-              <button
-                type="button"
-                disabled={
-                  sending ||
-                  parsingFile ||
-                  !csvFile ||
-                  leadCount <= 0
-                }
-                onClick={uploadCSV}
-                className="w-full rounded-lg bg-purple-600 px-4 py-3 font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {parsingFile
-                  ? "Parsing..."
-                  : sending
-                  ? "Uploading..."
-                  : "Upload & Schedule Leads"}
-              </button>
+    {/* Delay */}
+    <div>
+      <label className="mb-1 block text-sm font-medium">
+        Delay between emails (ms)
+      </label>
 
-            </div>
-          </section>
+      <input
+        type="number"
+        min="0"
+        value={delayMs}
+        onChange={(e) =>
+          setDelayMs(Number(e.target.value))
+        }
+        className="w-full rounded-lg border px-3 py-2"
+      />
+
+      <p className="mt-1 text-xs text-gray-400">
+        Minimum spacing between sends.
+      </p>
+    </div>
+
+    {/* Hourly limit */}
+    <div>
+      <label className="mb-1 block text-sm font-medium">
+        Hourly limit
+      </label>
+
+      <input
+        type="number"
+        min="1"
+        value={hourlyLimit}
+        onChange={(e) =>
+          setHourlyLimit(Number(e.target.value))
+        }
+        className="w-full rounded-lg border px-3 py-2"
+      />
+
+      <p className="mt-1 text-xs text-gray-400">
+        Maximum emails per sender per hour.
+      </p>
+    </div>
+
+    {/* Upload */}
+    <button
+      type="button"
+      disabled={
+        sending ||
+        parsingFile ||
+        !csvFile ||
+        leadCount <= 0
+      }
+      onClick={uploadCSV}
+      className="w-full rounded-lg bg-purple-600 px-4 py-3 font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {parsingFile
+        ? "Parsing..."
+        : sending
+        ? "Uploading..."
+        : "Upload & Schedule Leads"}
+    </button>
+
+  </div>
+</section>
 
         </div>
 
