@@ -11,11 +11,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email.trim()
+  );
+}
+
 router.post(
   "/csv",
   upload.single("file"),
   async (req, res) => {
     try {
+      // -----------------------------------------
+      // Check uploaded file
+      // -----------------------------------------
+
       if (!req.file) {
         return res.status(400).json({
           success: false,
@@ -33,6 +43,10 @@ router.post(
         senderName,
       } = req.body;
 
+      // -----------------------------------------
+      // Validate required fields
+      // -----------------------------------------
+
       if (!subject || !body || !startTime) {
         return res.status(400).json({
           success: false,
@@ -40,6 +54,10 @@ router.post(
             "subject, body and startTime are required",
         });
       }
+
+      // -----------------------------------------
+      // Validate start time
+      // -----------------------------------------
 
       const firstSendTime =
         new Date(startTime);
@@ -55,72 +73,179 @@ router.post(
         });
       }
 
+      if (
+        firstSendTime.getTime() <=
+        Date.now()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "startTime must be in the future",
+        });
+      }
+
+      // -----------------------------------------
+      // Read uploaded file
+      // -----------------------------------------
+
       const fileText =
-        req.file.buffer.toString(
-          "utf-8"
-        );
+        req.file.buffer
+          .toString("utf-8")
+          .replace(/^\uFEFF/, "")
+          .trim();
+
+      if (!fileText) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Uploaded file is empty",
+        });
+      }
 
       let recipients: string[] = [];
 
       const fileName =
         req.file.originalname.toLowerCase();
 
-      /**
-       * TXT:
-       * one email address per line.
-       */
+      // -----------------------------------------
+      // TXT FILE
+      // One email per line
+      // -----------------------------------------
+
       if (fileName.endsWith(".txt")) {
         recipients = fileText
           .split(/\r?\n/)
           .map((line) => line.trim())
-          .filter(
-            (line) =>
-              line.length > 0
-          );
-      } else {
-        /**
-         * CSV:
-         * expects an email column.
-         */
-        const records = parse(
-          fileText,
-          {
-            columns: true,
-            skip_empty_lines: true,
-            trim: true,
-          }
-        ) as Record<
-          string,
-          string
-        >[];
-
-        recipients = records
-          .map((row) => {
-            return (
-              row.email ||
-              row.Email ||
-              row.EMAIL
-            );
-          })
-          .filter(
-            (email): email is string =>
-              Boolean(email)
-          );
+          .filter(Boolean)
+          .filter(isValidEmail);
       }
+
+      // -----------------------------------------
+      // CSV FILE
+      // -----------------------------------------
+
+      else if (
+        fileName.endsWith(".csv")
+      ) {
+        try {
+          const records =
+            parse(fileText, {
+              columns: true,
+              skip_empty_lines: true,
+              trim: true,
+              bom: true,
+            }) as Record<
+              string,
+              string
+            >[];
+
+          recipients = records
+            .map((row) => {
+              // Normalize column names
+              const normalizedRow:
+                Record<string, string> = {};
+
+              Object.entries(row).forEach(
+                ([key, value]) => {
+                  const normalizedKey =
+                    key
+                      .replace(
+                        /^\uFEFF/,
+                        ""
+                      )
+                      .trim()
+                      .toLowerCase()
+                      .replace(
+                        /[_-]/g,
+                        " "
+                      );
+
+                  normalizedRow[
+                    normalizedKey
+                  ] = String(
+                    value || ""
+                  ).trim();
+                }
+              );
+
+              return (
+                normalizedRow["email"] ||
+                normalizedRow[
+                  "email address"
+                ] ||
+                normalizedRow[
+                  "emailaddress"
+                ] ||
+                ""
+              );
+            })
+            .map((email) =>
+              email
+                .replace(
+                  /^["']|["']$/g,
+                  ""
+                )
+                .trim()
+            )
+            .filter(isValidEmail);
+        } catch (csvError) {
+          console.error(
+            "CSV parsing error:",
+            csvError
+          );
+
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid CSV file. Make sure it contains an email column.",
+          });
+        }
+      }
+
+      // -----------------------------------------
+      // Unsupported file
+      // -----------------------------------------
+
+      else {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Only CSV and TXT files are supported",
+        });
+      }
+
+      // -----------------------------------------
+      // Remove duplicate emails
+      // -----------------------------------------
+
+      recipients = [
+        ...new Set(
+          recipients.map((email) =>
+            email.toLowerCase()
+          )
+        ),
+      ];
+
+      // -----------------------------------------
+      // Make sure emails exist
+      // -----------------------------------------
 
       if (recipients.length === 0) {
         return res.status(400).json({
           success: false,
           message:
-            "No email addresses found in the uploaded file",
+            "No valid email addresses found in the uploaded file. CSV must contain an 'email' column.",
         });
       }
 
-      /**
-       * Temporary demo user.
-       * Google OAuth will replace this
-       * for the final authenticated flow.
-       */
+      console.log(
+        `Found ${recipients.length} valid email addresses.`
+      );
+
+      // -----------------------------------------
+      // Temporary demo user
+      // -----------------------------------------
+
       const user =
         await prisma.user.upsert({
           where: {
@@ -135,12 +260,45 @@ router.post(
           },
         });
 
+      // -----------------------------------------
+      // Sender
+      // -----------------------------------------
+
       const fromEmail =
         senderEmail ||
         "sender@ethereal.email";
 
       const limit =
         Number(hourlyLimit) || 200;
+
+      if (limit < 1) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Hourly limit must be at least 1",
+        });
+      }
+
+      // -----------------------------------------
+      // Delay
+      // -----------------------------------------
+
+      const delayBetweenEmails =
+        Number(delayMs) || 2000;
+
+      if (
+        delayBetweenEmails < 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Delay cannot be negative",
+        });
+      }
+
+      // -----------------------------------------
+      // Create / update sender
+      // -----------------------------------------
 
       const sender =
         await prisma.sender.upsert({
@@ -164,16 +322,13 @@ router.post(
           },
         });
 
-      const delayBetweenEmails =
-        Number(delayMs) || 2000;
+      // -----------------------------------------
+      // Create emails + BullMQ jobs
+      // + Elasticsearch documents
+      // -----------------------------------------
 
       const createdEmails: string[] = [];
 
-      /**
-       * Create PostgreSQL records,
-       * BullMQ delayed jobs and
-       * Elasticsearch documents.
-       */
       for (
         let i = 0;
         i < recipients.length;
@@ -186,6 +341,7 @@ router.post(
                 delayBetweenEmails
           );
 
+        // Create PostgreSQL record
         const email =
           await prisma.email.create({
             data: {
@@ -200,12 +356,15 @@ router.post(
             },
           });
 
-        const delay = Math.max(
-          scheduledAt.getTime() -
-            Date.now(),
-          0
-        );
+        // Calculate BullMQ delay
+        const delay =
+          Math.max(
+            scheduledAt.getTime() -
+              Date.now(),
+            0
+          );
 
+        // Add delayed BullMQ job
         const job =
           await emailQueue.add(
             "send-email",
@@ -219,6 +378,7 @@ router.post(
             }
           );
 
+        // Store BullMQ job ID
         await prisma.email.update({
           where: {
             id: email.id,
@@ -228,13 +388,16 @@ router.post(
           },
         });
 
+        // Index in Elasticsearch
         await indexEmail({
           id: email.id,
           recipient:
             email.recipient,
-          subject: email.subject,
+          subject:
+            email.subject,
           body: email.body,
-          status: email.status,
+          status:
+            email.status,
           scheduledAt:
             email.scheduledAt,
         });
@@ -243,6 +406,10 @@ router.post(
           email.id
         );
       }
+
+      // -----------------------------------------
+      // Success
+      // -----------------------------------------
 
       return res.status(201).json({
         success: true,

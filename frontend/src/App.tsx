@@ -154,118 +154,158 @@ function App() {
   // --------------------------------------------------
 
   async function parseLeadsFile(file: File) {
-    setParsingFile(true);
-    setLeadCount(0);
+  setParsingFile(true);
+  setLeadCount(0);
 
-    try {
-      const text = await file.text();
+  try {
+    const text = await file.text();
 
-      const cleanedText = text.trim();
+    // Remove UTF-8 BOM and extra whitespace
+    const cleanedText = text
+      .replace(/^\uFEFF/, "")
+      .trim();
 
-      if (!cleanedText) {
+    if (!cleanedText) {
+      setCsvFile(null);
+      setLeadCount(0);
+      showMessage("The selected file is empty.");
+      return;
+    }
+
+    let count = 0;
+
+    // -----------------------------------------
+    // TXT FILE
+    // One email address per line
+    // -----------------------------------------
+
+    if (file.name.toLowerCase().endsWith(".txt")) {
+      const emails = cleanedText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .filter((email) => isValidEmail(email));
+
+      count = emails.length;
+    }
+
+    // -----------------------------------------
+    // CSV FILE
+    // -----------------------------------------
+
+    else {
+      const lines = cleanedText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (lines.length === 0) {
         setCsvFile(null);
-        showMessage("The selected file is empty.");
+        setLeadCount(0);
+        showMessage("No data found in CSV.");
         return;
       }
 
-      let count = 0;
+      // Get header row
+      const headerLine = lines[0];
 
-      if (
-        file.name.toLowerCase().endsWith(".txt")
-      ) {
-        // TXT:
-        // one email per line
-        const emailsFromText = cleanedText
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(
-            (line) =>
-              line.length > 0 &&
-              isValidEmail(line)
-          );
+      // Support comma or semicolon separated CSV
+      const delimiter =
+        headerLine.includes(";") &&
+        !headerLine.includes(",")
+          ? ";"
+          : ",";
 
-        count = emailsFromText.length;
-      } else {
-        // CSV
-        const lines = cleanedText
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean);
-
-        if (lines.length === 0) {
-          showMessage("No leads found in CSV.");
-          return;
-        }
-
-        const header = lines[0]
-          .split(",")
-          .map((value) =>
-            value
-              .trim()
-              .replace(/^["']|["']$/g, "")
-              .toLowerCase()
-          );
-
-        const emailColumn = header.findIndex(
-          (column) => column === "email"
+      const headers = headerLine
+        .split(delimiter)
+        .map((header) =>
+          header
+            .replace(/^["']|["']$/g, "")
+            .replace(/^\uFEFF/, "")
+            .trim()
+            .toLowerCase()
         );
 
-        if (emailColumn === -1) {
-          showMessage(
-            "CSV must contain an 'email' column."
-          );
-          setCsvFile(null);
-          return;
-        }
+      // Accept several common email column names
+      const emailColumn = headers.findIndex(
+        (header) =>
+          header === "email" ||
+          header === "email address" ||
+          header === "email_address" ||
+          header === "emailaddress"
+      );
 
-        for (let i = 1; i < lines.length; i++) {
-          const columns = lines[i]
-            .split(",")
-            .map((value) =>
-              value
-                .trim()
-                .replace(/^["']|["']$/g, "")
-            );
-
-          const email =
-            columns[emailColumn] || "";
-
-          if (isValidEmail(email)) {
-            count++;
-          }
-        }
-      }
-
-      if (count === 0) {
+      if (emailColumn === -1) {
         setCsvFile(null);
         setLeadCount(0);
 
         showMessage(
-          "No valid email addresses were found in the file."
+          "Could not find an email column. Use a column named Email."
         );
 
         return;
       }
 
-      setCsvFile(file);
-      setLeadCount(count);
+      // Read each data row
+      for (let i = 1; i < lines.length; i++) {
+        const columns = lines[i]
+          .split(delimiter)
+          .map((value) =>
+            value
+              .replace(/^["']|["']$/g, "")
+              .trim()
+          );
 
-      showMessage(
-        `${count} lead${count === 1 ? "" : "s"} found.`
-      );
-    } catch (error) {
-      console.error("File parsing error:", error);
+        const email =
+          columns[emailColumn] || "";
 
+        if (isValidEmail(email)) {
+          count++;
+        }
+      }
+    }
+
+    // -----------------------------------------
+    // No valid emails
+    // -----------------------------------------
+
+    if (count === 0) {
       setCsvFile(null);
       setLeadCount(0);
 
       showMessage(
-        "Unable to read the selected file."
+        "No valid email addresses were found in the file."
       );
-    } finally {
-      setParsingFile(false);
+
+      return;
     }
+
+    // -----------------------------------------
+    // SUCCESS
+    // -----------------------------------------
+
+    setCsvFile(file);
+    setLeadCount(count);
+
+    showMessage(
+      `${count} lead${count === 1 ? "" : "s"} detected successfully.`
+    );
+  } catch (error) {
+    console.error(
+      "File parsing error:",
+      error
+    );
+
+    setCsvFile(null);
+    setLeadCount(0);
+
+    showMessage(
+      "Unable to read the selected file."
+    );
+  } finally {
+    setParsingFile(false);
   }
+}
 
   // --------------------------------------------------
   // File selected
