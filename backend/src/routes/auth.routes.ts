@@ -51,12 +51,12 @@ router.get(
 
       // Store JWT in HTTP-only cookie
       res.cookie("token", token, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
+         httpOnly: true,
+         secure: true,
+         sameSite: "lax",
+         path: "/",
+         maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
 
       // IMPORTANT:
       // After Google login, go to the deployed frontend,
@@ -143,7 +143,8 @@ router.post("/logout", (req, res) => {
   res.clearCookie("token", {
   httpOnly: true,
   secure: true,
-  sameSite: "none",
+  sameSite: "lax",
+  path: "/",
 });
 
   return res.json({
