@@ -31,6 +31,16 @@ app.use("/api/emails", emailRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/slack", slackRoutes);
 
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    application: "ReachInbox Email Job Scheduler",
+    message: "Backend is running successfully",
+    health: "/api/health",
+    queueDashboard: "/admin/queues",
+  });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({
     success: true,
