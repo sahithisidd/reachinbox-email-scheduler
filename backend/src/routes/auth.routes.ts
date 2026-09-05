@@ -51,12 +51,11 @@ router.get(
 
       // Store JWT in HTTP-only cookie
       res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite:
-          process.env.NODE_ENV === "production" ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
 
       // IMPORTANT:
       // After Google login, go to the deployed frontend,
@@ -84,6 +83,8 @@ router.get("/me", async (req, res) => {
   try {
     const token = req.cookies?.token;
 
+    console.log("Auth cookie exists:", Boolean(token));
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -91,7 +92,10 @@ router.get("/me", async (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as {
+    const decoded = jwt.verify(
+      token,
+      JWT_SECRET
+    ) as {
       userId: string;
     };
 
@@ -114,6 +118,8 @@ router.get("/me", async (req, res) => {
       });
     }
 
+    console.log("Logged-in user:", user.email);
+
     return res.json({
       success: true,
       user,
@@ -134,11 +140,10 @@ router.get("/me", async (req, res) => {
 
 router.post("/logout", (req, res) => {
   res.clearCookie("token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite:
-      process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+});
 
   return res.json({
     success: true,
